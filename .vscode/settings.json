@@ -1,0 +1,11 @@
+{
+	"files.associations": {
+		"optional": "c",
+		"random": "c",
+		"stdexcept": "c",
+		"functional": "c",
+		"type_traits": "c",
+		"variant": "c",
+		"condition_variable": "c"
+	}
+}
