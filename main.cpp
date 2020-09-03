@@ -387,6 +387,7 @@ void update() {
 
 			case SDL_QUIT:
 				// IMG_Quit();
+				TTF_Quit();
 				SDL_DestroyRenderer(renderer);
 				SDL_DestroyWindow(window);
 				SDL_Quit();
@@ -471,6 +472,14 @@ void update() {
 					t->backspace();
 					rerender_requested = 1;	
 				}
+				else if (event.key.keysym.scancode == SDL_SCANCODE_DELETE) {
+					dupeCurrent();
+					for ( auto& ptr : h[hi] ) {
+						ptr.reset();
+					}
+					h[hi].clear();
+					rerender_requested = 1;	
+				}
 
 				else if (!ms.typing && event.key.keysym.scancode == SDL_SCANCODE_GRAVE) {
 					int s = h[hi].size();
@@ -479,7 +488,10 @@ void update() {
 					rerender_requested = 1;
 				}
 				else if (!ms.typing && event.key.keysym.sym >= SDLK_0 && event.key.keysym.sym <= SDLK_7) {
-					cci = event.key.keysym.sym - SDLK_0;
+					int s = h[hi].size();
+					if (s) cci = h[hi][s-1]->c = event.key.keysym.sym - SDLK_0;
+					else cci = event.key.keysym.sym - SDLK_0;
+					rerender_requested = 1;
 				}
 
 				else if (ms.px == ms.x && ms.py == ms.y) {
@@ -493,7 +505,6 @@ void update() {
 
 				}
 				else {
-					// printf("\n'%c' (%d, %d) -> (%d, %d)\n", event.key.keysym.sym, ms.px, ms.py, ms.x, ms.y);
 					pushToHistory(event.key.keysym.scancode);
 					rerender_requested = 1;
 				}
@@ -546,6 +557,8 @@ void pushToHistory( int scancode ) {
 	}
 }
 
+
+////////////////////////////////
 void dupeCurrent() {
 
 	// boundary condition
