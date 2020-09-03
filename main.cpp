@@ -26,9 +26,9 @@ SDL_Window* window;
 TTF_Font* font;
 
 // 0=black, 1=red, 2=yellow, 3=green, 4=cyan, 5=blue, 6=magenta, 7=white
-Uint32 colors[] = {0x00000000, 0x0000007f, 0x00007f7f, 0x00007f00, 0x007f7f00, 0x007f0000, 0x007f007f, 0x007f7f7f};
+Uint32 colors[] = {0x00202020, 0x0000007f, 0x00007f7f, 0x00007f00, 0x007f7f00, 0x007f0000, 0x007f007f, 0x007f7f7f};
 char cci = 5; // current color index
-#define LIGHTER_COLOR 0x00808080
+#define LIGHTER_COLOR (c ? 0x00808080 : 0)
 
 // transparent (ctrl+t), translucent (ctrl+g), opaque (ctrl+o)
 Uint32 materials[] = {0x00000000, 0x7f000000, 0xff000000};
@@ -68,10 +68,12 @@ Rect::Rect( int x1, int y1, int x2, int y2) {
 }
 
 void Rect::draw() {
-	boxColor(renderer, x, y, x+w-t, y+t, colors[c] | materials[2]);
-	boxColor(renderer, x, y+t, x+t, y+h, colors[c] | materials[2]);
-	boxColor(renderer, x+w-t, y, x+w, y+h-t, colors[c] | materials[2]);
-	boxColor(renderer, x+t, y+h-t, x+w, y+h, colors[c] | materials[2]);
+	if (m != 1) {
+		boxColor(renderer, x, y, x+w-t, y+t, colors[c] | materials[2]);
+		boxColor(renderer, x, y+t, x+t, y+h, colors[c] | materials[2]);
+		boxColor(renderer, x+w-t, y, x+w, y+h-t, colors[c] | materials[2]);
+		boxColor(renderer, x+t, y+h-t, x+w, y+h, colors[c] | materials[2]);
+	}
 	boxColor(renderer, x+t, y+t, x+w-t, y+h-t, colors[c] | LIGHTER_COLOR | materials[m]);
 }
 
@@ -109,8 +111,10 @@ Ellipse::Ellipse(int x1, int y1, int x2, int y2) {
 }
 
 void Ellipse::draw() {
-	for (int i = 0; i<t; i++) {
-		ellipseColor(renderer, x, y, rx-i, ry-i, colors[c] | materials[2]);
+	if (m != 1) {
+		for (int i = 0; i<t; i++) {
+			ellipseColor(renderer, x, y, rx-i, ry-i, colors[c] | materials[2]);
+		}
 	}
 	filledEllipseColor(renderer, x, y, rx-t, ry-t, colors[c] | LIGHTER_COLOR | materials[m] );
 }
@@ -143,7 +147,9 @@ Arrow::Arrow( int x1, int y1, int x2, int y2) {
 }
 
 void Arrow::draw() {
-	thickLineColor(renderer, x, y, x+dx, y+dy, t, colors[c] | materials[2]);
+	if (!dx && !dy) return;
+
+	thickLineColor(renderer, x, y, x+dx, y+dy, t, colors[c] | LIGHTER_COLOR | materials[2]);
 	if (m > 0) {
 		double len = hypot(dx, dy);
 		double ux = dx/len;
@@ -154,8 +160,8 @@ void Arrow::draw() {
 		int v2x = x+dx - 20*ux + 10*uy;
 		int v2y = y+dy - 20*uy - 10*ux;
 
-		thickLineColor(renderer, x+dx, y+dy, v1x, v1y, t, colors[c] | materials[2]);
-		thickLineColor(renderer, x+dx, y+dy, v2x, v2y, t, colors[c] | materials[2]);
+		thickLineColor(renderer, x+dx, y+dy, v1x, v1y, t, colors[c] | LIGHTER_COLOR | materials[2]);
+		thickLineColor(renderer, x+dx, y+dy, v2x, v2y, t, colors[c] | LIGHTER_COLOR | materials[2]);
 	}
 }
 
@@ -330,7 +336,7 @@ struct MouseStatus ms = {0,0,0,0,0,0};
 ///////////////////////////
 void render() {
 
-	SDL_SetRenderDrawColor(renderer, 30, 30, 30, SDL_ALPHA_OPAQUE);
+	SDL_SetRenderDrawColor(renderer, 32, 32, 32, SDL_ALPHA_OPAQUE);
 	SDL_RenderClear(renderer);
 
 	for ( auto& ptr : h[hi]) {
@@ -440,6 +446,25 @@ void update() {
 					rerender_requested = 1;
 					ms.typing = 0;
 				}
+				else if (event.key.keysym.scancode == SDL_SCANCODE_V && event.key.keysym.mod & KMOD_CTRL) {
+					char* cbd = SDL_GetClipboardText();
+					if (cbd && *cbd) {
+						if (ms.typing) {
+							Text* t = (Text*) (h[hi].back().get());
+							t->add(cbd);
+						}
+						else {
+							ms.typing = 1;
+							dupeCurrent();
+							h[hi].push_back(std::make_shared<Text>(' ', ms.x, ms.y));
+							Text* t = (Text*) (h[hi].back().get());
+							t->add(cbd);
+						}
+						rerender_requested = 1;
+						SDL_free(cbd);
+					}
+				}
+				
 
 				else if (ms.typing && event.key.keysym.sym == SDLK_BACKSPACE) {
 					Text* t = (Text*) (h[hi].back().get());
