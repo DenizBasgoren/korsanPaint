@@ -309,7 +309,7 @@ int main() {
 	// IMG_Init( IMG_INIT_PNG | IMG_INIT_JPG );
 	TTF_Init();
 
-	font = TTF_OpenFont("NotoSans-Bold.ttf", 40);
+	font = TTF_OpenFont("/usr/share/korsanPaint/NotoSans-Bold.ttf", 40);
 
 	SDL_StartTextInput();
 
