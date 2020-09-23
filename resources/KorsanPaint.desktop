@@ -1,11 +1,11 @@
 [Desktop Entry]
 
-Name=KorsanPaint
+Name=Korsan Paint
 GenericName=Paint Program
-Comment=An easy-to-use paint program
+Comment=An fast paint program
 Type=Application
 Path=/usr/bin
-Exec=korsanPaint
+Exec=korsanPaint %f
 Icon=/usr/share/korsanPaint/icon.png
 Categories=2DGraphics;
 Terminal=false

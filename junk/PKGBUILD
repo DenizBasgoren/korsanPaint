@@ -8,7 +8,7 @@ arch=('any')
 url="https://github.com/denizbasgoren/korsanpaint"
 license=('Unlicense')
 groups=()
-depends=('glibc' 'sdl2' 'sdl2_gfx' 'sdl2_ttf')
+depends=('glibc' 'sdl2' 'sdl2_gfx' 'sdl2_ttf' 'sdl2_image')
 makedepends=('gcc')
 checkdepends=()
 optdepends=()
@@ -26,7 +26,7 @@ validpgpkeys=()
 
 package() {
 	cd korsanPaint
-	g++ main.cpp -lSDL2 -lSDL2_gfx -lSDL2_ttf -o korsanPaint
+	g++ main.cpp -lSDL2 -lSDL2_gfx -lSDL2_ttf -lSDL2_image -o korsanPaint
 	mv korsanPaint /usr/bin
 	mv KorsanPaint.desktop /usr/share/applications/
 	mkdir /usr/share/korsanPaint

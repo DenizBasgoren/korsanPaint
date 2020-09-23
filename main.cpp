@@ -1,29 +1,35 @@
 
-// DEPENDENCIES: "SDL2", "SDL2_GFX", "SDL2_TTF"
-// TO COMPILE: g++ main.cpp -lSDL2 -lSDL2_gfx -lSDL2_ttf
+// DEPENDENCIES: "SDL2", "SDL2_GFX", "SDL2_TTF", "SDL2_IMAGE"
+// TO COMPILE: g++ main.cpp -lSDL2 -lSDL2_gfx -lSDL2_ttf -lSDL2_image
 
 
 
 #include <algorithm>
+#include <dirent.h>
 #include <math.h>
 #include <iostream>
 #include <memory>
 #include <string>
 #include <vector>
 #include <SDL2/SDL.h>
-// #include <SDL2/SDL_image.h>
+#include <SDL2/SDL_image.h>
 #include <SDL2/SDL2_gfxPrimitives.h>
 #include <SDL2/SDL_ttf.h>
+
 
 // prototypes
 void update();
 void render();
 void pushToHistory( int scancode );
 void dupeCurrent();
+Uint32 load_images( Uint32 interval, void* dirname_v );
 
 SDL_Renderer* renderer;
 SDL_Window* window;
+SDL_Surface* icon;
 TTF_Font* font;
+
+std::vector<SDL_Texture*> imgs;
 
 // 0=black, 1=red, 2=yellow, 3=green, 4=cyan, 5=blue, 6=magenta, 7=white
 Uint32 colors[] = {0x00202020, 0x0000007f, 0x00007f7f, 0x00007f00, 0x007f7f00, 0x007f0000, 0x007f007f, 0x007f7f7f};
@@ -32,7 +38,8 @@ char cci = 5; // current color index
 
 // transparent (ctrl+t), translucent (ctrl+g), opaque (ctrl+o)
 Uint32 materials[] = {0x00000000, 0x7f000000, 0xff000000};
-char cmi = 2;
+char cmi = 2; // current material index
+char cii = 0; // current image index
 
 /////////////////////////////
 struct Shape {
@@ -68,11 +75,12 @@ Rect::Rect( int x1, int y1, int x2, int y2) {
 }
 
 void Rect::draw() {
+
 	if (m != 1) {
-		boxColor(renderer, x, y, x+w-t, y+t, colors[c] | materials[2]);
-		boxColor(renderer, x, y+t, x+t, y+h, colors[c] | materials[2]);
-		boxColor(renderer, x+w-t, y, x+w, y+h-t, colors[c] | materials[2]);
-		boxColor(renderer, x+t, y+h-t, x+w, y+h, colors[c] | materials[2]);
+		boxColor(renderer, x, y, x+w-t, y+t, colors[c] | (m == 0 ? LIGHTER_COLOR : 0 ) | materials[2]);
+		boxColor(renderer, x, y+t, x+t, y+h, colors[c] | (m == 0 ? LIGHTER_COLOR : 0 ) | materials[2]);
+		boxColor(renderer, x+w-t, y, x+w, y+h-t, colors[c] | (m == 0 ? LIGHTER_COLOR : 0 ) | materials[2]);
+		boxColor(renderer, x+t, y+h-t, x+w, y+h, colors[c] | (m == 0 ? LIGHTER_COLOR : 0 ) | materials[2]);
 	}
 	boxColor(renderer, x+t, y+t, x+w-t, y+h-t, colors[c] | LIGHTER_COLOR | materials[m]);
 }
@@ -113,7 +121,7 @@ Ellipse::Ellipse(int x1, int y1, int x2, int y2) {
 void Ellipse::draw() {
 	if (m != 1) {
 		for (int i = 0; i<t; i++) {
-			ellipseColor(renderer, x, y, rx-i, ry-i, colors[c] | materials[2]);
+			ellipseColor(renderer, x, y, rx-i, ry-i, colors[c] | (m == 0 ? LIGHTER_COLOR : 0 ) | materials[2]);
 		}
 	}
 	filledEllipseColor(renderer, x, y, rx-t, ry-t, colors[c] | LIGHTER_COLOR | materials[m] );
@@ -150,7 +158,7 @@ void Arrow::draw() {
 	if (!dx && !dy) return;
 
 	thickLineColor(renderer, x, y, x+dx, y+dy, t, colors[c] | LIGHTER_COLOR | materials[2]);
-	if (m > 0) {
+	if (m != 2) {
 		double len = hypot(dx, dy);
 		double ux = dx/len;
 		double uy = dy/len;
@@ -197,12 +205,12 @@ void Grid::draw() {
 
 	for (int col = x; col<x+w+t; col += 100) {
 		for (int i = 0; i<t; i++) {
-			vlineColor(renderer, col+i, y, y+h+t, colors[c] | materials[2]);
+			vlineColor(renderer, col+i, y, y+h+t, colors[c] | (m == 0 ? LIGHTER_COLOR : 0 ) | materials[2]);
 		}
 	}
 	for (int row = y; row<y+h+t; row += 60) {
 		for (int i = 0; i<t; i++) {
-			hlineColor(renderer, x, x+w+t, row+i, colors[c] | materials[2]);
+			hlineColor(renderer, x, x+w+t, row+i, colors[c] | (m == 0 ? LIGHTER_COLOR : 0 ) | materials[2]);
 		}
 	}
 }
@@ -271,14 +279,43 @@ bool Text::in(int cx, int cy) {
 
 
 /////////////////////////////
-// struct Image : Shape  {
-// 	int w;
-// 	int h;
-// 	SDL_Texture* i;
-// Image(int x1, int y1, int x2, int y2);
-	// void draw();
-	// bool in(int cx, int cy);
-// };
+struct Image : Shape  {
+	int w;
+	int h;
+	SDL_Texture* i;
+	Image(int x1, int y1, int x2, int y2);
+	void draw();
+	bool in(int cx, int cy);
+};
+
+Image::Image( int x1, int y1, int x2, int y2) {
+	x = x1 > x2 ? x2 : x1;
+	y = y1 > y2 ? y2 : y1;
+	w = x1 - x + x2 - x;
+	h = y1 - y + y2 - y;
+	i = imgs[cii];
+}
+
+void Image::draw() {
+	SDL_Rect dest;
+	dest.x = x;
+	dest.y = y;
+	dest.w = w;
+	dest.h = h;
+
+	SDL_RenderCopy(renderer, i, NULL, &dest );
+}
+
+bool Image::in(int cx, int cy) {
+	if ( cy >= y && cy <= y+t && cx >= x && cx <= x+w ) return true;
+	if ( cx >= x && cx <= x+t && cy >= y && cy <= y+h ) return true;
+	if ( cx >= x+w-t && cx <= x+w && cy >= y && cy <= y+h ) return true;
+	if ( cy >= y+h-t && cy <= y+h && cx >= x && cx <= x+w ) return true;
+	return false;
+}
+
+
+
 
 
 /////////////////////////////
@@ -289,29 +326,33 @@ char rerender_requested = 1;
 char preview_requested = 0;
 char preview_shape;
 
+SDL_TimerID timer_id;
+
 
 
 
 ////////////////////////////
-int main() {
+int main( int argc, char* argv[]) {
 
-	
 	SDL_Init( SDL_INIT_AUDIO | SDL_INIT_EVENTS | SDL_INIT_VIDEO | SDL_INIT_TIMER );
 
-	window = SDL_CreateWindow("Paint", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
+	window = SDL_CreateWindow("KorsanPaint", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
 	800, 600, SDL_WINDOW_RESIZABLE | SDL_WINDOW_MAXIMIZED);
-
-	// window = SDL_CreateWindow("Paint", 0, 0,
-	// 200, 600, SDL_WINDOW_RESIZABLE);
 
 	renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
 	
-	// IMG_Init( IMG_INIT_PNG | IMG_INIT_JPG );
+	IMG_Init( IMG_INIT_PNG | IMG_INIT_JPG );
 	TTF_Init();
 
+	icon = IMG_Load("/usr/share/korsanPaint/icon.png");
 	font = TTF_OpenFont("/usr/share/korsanPaint/NotoSans-Bold.ttf", 40);
 
+	SDL_SetWindowIcon(window, icon);
 	SDL_StartTextInput();
+
+	if (argc == 2) {
+		timer_id = SDL_AddTimer(1, load_images, argv[1]) ;
+	}
 
 	while(1) {
 		update();
@@ -359,6 +400,10 @@ void render() {
 			case SDL_SCANCODE_G:
 				s = new Grid(ms.px, ms.py, ms.x, ms.y);
 			break;
+			case SDL_SCANCODE_I:
+				if (cii >= imgs.size()) break;
+				s = new Image(ms.px, ms.py, ms.x, ms.y);
+			break;
 		}
 
 		if (s) {
@@ -366,6 +411,12 @@ void render() {
 			delete s;
 		}
 	}
+
+	int w, h;
+	SDL_GetWindowSize(window, &w, &h);
+	Rect color_indicator(w-26, h-26, w-4, h-4);
+	color_indicator.t = 3;
+	color_indicator.draw();
 
 	SDL_RenderPresent(renderer);
 	rerender_requested = 0;
@@ -448,6 +499,7 @@ void update() {
 					ms.typing = 0;
 				}
 				else if (event.key.keysym.scancode == SDL_SCANCODE_V && event.key.keysym.mod & KMOD_CTRL) {
+					// TODO: Split \n
 					char* cbd = SDL_GetClipboardText();
 					if (cbd && *cbd) {
 						if (ms.typing) {
@@ -481,16 +533,25 @@ void update() {
 					rerender_requested = 1;	
 				}
 
-				else if (!ms.typing && event.key.keysym.scancode == SDL_SCANCODE_GRAVE) {
+				else if (!ms.typing && event.key.keysym.scancode == SDL_SCANCODE_RETURN) {
 					int s = h[hi].size();
-					if (s) cmi = h[hi][s-1]->m = (h[hi][s-1]->m + 1) % 3;
-					else cmi = (cmi + 1) % 3;
+					if (s) {
+						h[hi][s-1]->m = cmi;
+						h[hi][s-1]->c = cci;
+					}
+					rerender_requested = 1;
+				}
+
+				else if (!ms.typing && event.key.keysym.scancode == SDL_SCANCODE_GRAVE) {
+					cmi = (cmi + 1) % 3;
 					rerender_requested = 1;
 				}
 				else if (!ms.typing && event.key.keysym.sym >= SDLK_0 && event.key.keysym.sym <= SDLK_7) {
-					int s = h[hi].size();
-					if (s) cci = h[hi][s-1]->c = event.key.keysym.sym - SDLK_0;
-					else cci = event.key.keysym.sym - SDLK_0;
+					cci = event.key.keysym.sym - SDLK_0;
+					rerender_requested = 1;
+				}
+				else if (!ms.typing && event.key.keysym.scancode >= SDL_SCANCODE_KP_1 && event.key.keysym.scancode <= SDL_SCANCODE_KP_9) {
+					cii = event.key.keysym.scancode - SDL_SCANCODE_KP_1 - 2;
 					rerender_requested = 1;
 				}
 
@@ -554,6 +615,12 @@ void pushToHistory( int scancode ) {
 			dupeCurrent();
 			h[hi].push_back( std::make_shared<Grid>(ms.px, ms.py, ms.x, ms.y) );
 		break;
+		case SDL_SCANCODE_I:
+			if (cii >= imgs.size()) break;
+			dupeCurrent();
+			h[hi].push_back( std::make_shared<Image>(ms.px, ms.py, ms.x, ms.y) );
+		break;
+		
 	}
 }
 
@@ -599,4 +666,65 @@ void dupeCurrent() {
 		h[hi+1].push_back(ptr);
 	}
 	hi++; hl++;
+}
+
+
+
+
+
+/////////////////////////////
+Uint32 load_images( Uint32 interval, void* dirname_v ) {
+	// ls . -1 --color=never
+
+	SDL_RemoveTimer(timer_id);
+	
+	char* dirname = (char*) dirname_v;
+	
+	if (dirname[1] == 't' && dirname[2] == 'm' && dirname[3] == 'p') {
+    	SDL_Surface *surface = IMG_Load( dirname );
+		if (surface) {
+			imgs.push_back( SDL_CreateTextureFromSurface(renderer, surface) );
+			int screenW = surface->w, screenH = surface->h;
+			SDL_FreeSurface(surface);
+
+			dupeCurrent();
+			h[hi].push_back( std::make_shared<Image>(0, 0, screenW, screenH) );
+			rerender_requested = 1;
+
+			return 1;
+		}
+	}
+
+	DIR *d;
+	struct dirent *dir;
+	std::vector<std::string> dirnames;
+	std::string dirname_string(dirname);
+
+	if (*(dirname_string.end()-1) != '/') {
+		dirname_string += '/';
+	}
+
+	d = opendir(dirname);
+	if (!d) return 1;
+
+	while ((dir = readdir(d)) != NULL)
+	{
+		dirnames.push_back( std::string(dir->d_name));
+	}
+	closedir(d);
+
+	std::sort(dirnames.begin(), dirnames.end());
+
+	for (int i = 0; i< dirnames.size(); i++) {
+		dirnames[i] = dirname_string + dirnames[i];
+
+
+		SDL_Surface *surface = IMG_Load( dirnames[i].c_str() );
+		if (surface) {
+			imgs.push_back( SDL_CreateTextureFromSurface(renderer, surface) );
+			SDL_FreeSurface(surface);
+		}
+	}
+
+	return 0;
 }
