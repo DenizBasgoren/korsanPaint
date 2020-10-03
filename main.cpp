@@ -33,12 +33,12 @@ std::vector<SDL_Texture*> imgs;
 
 // 0=black, 1=red, 2=yellow, 3=green, 4=cyan, 5=blue, 6=magenta, 7=white
 Uint32 colors[] = {0x00202020, 0x0000007f, 0x00007f7f, 0x00007f00, 0x007f7f00, 0x007f0000, 0x007f007f, 0x007f7f7f};
-char cci = 5; // current color index
+char cci = 3; // current color index
 #define LIGHTER_COLOR (c ? 0x00808080 : 0)
 
 // transparent (ctrl+t), translucent (ctrl+g), opaque (ctrl+o)
 Uint32 materials[] = {0x00000000, 0x7f000000, 0xff000000};
-char cmi = 2; // current material index
+char cmi = 0; // current material index
 char cii = 0; // current image index
 
 /////////////////////////////
@@ -351,7 +351,10 @@ int main( int argc, char* argv[]) {
 	SDL_StartTextInput();
 
 	if (argc == 2) {
-		timer_id = SDL_AddTimer(1, load_images, argv[1]) ;
+		timer_id = SDL_AddTimer(1, load_images, argv[1]);
+	}
+	else {
+		timer_id = SDL_AddTimer(1, load_images, (void*) "/u/");
 	}
 
 	while(1) {
@@ -417,6 +420,10 @@ void render() {
 	Rect color_indicator(w-26, h-26, w-4, h-4);
 	color_indicator.t = 3;
 	color_indicator.draw();
+
+	Arrow arrow_indicator(w-54, h-14, w-33, h-14);
+	arrow_indicator.t = 3;
+	arrow_indicator.draw();
 
 	SDL_RenderPresent(renderer);
 	rerender_requested = 0;
@@ -540,6 +547,15 @@ void update() {
 						h[hi][s-1]->c = cci;
 					}
 					rerender_requested = 1;
+				}
+				else if (ms.typing && event.key.keysym.scancode == SDL_SCANCODE_RETURN) {
+					int s = h[hi].size();
+					if (!s) break;
+
+					dupeCurrent();
+					h[hi].push_back(std::make_shared<Text>(SDLK_SPACE, ms.x, h[hi][s-1]->y + 100));
+					rerender_requested = 1;
+
 				}
 
 				else if (!ms.typing && event.key.keysym.scancode == SDL_SCANCODE_GRAVE) {
@@ -679,8 +695,10 @@ Uint32 load_images( Uint32 interval, void* dirname_v ) {
 	SDL_RemoveTimer(timer_id);
 	
 	char* dirname = (char*) dirname_v;
-	
-	if (dirname[1] == 't' && dirname[2] == 'm' && dirname[3] == 'p') {
+	if (dirname[0] == '/' && dirname[1] == 'u' && dirname[2] == '/') {
+		// nothing
+	}
+	else if (dirname[1] == 't' && dirname[2] == 'm' && dirname[3] == 'p') {
     	SDL_Surface *surface = IMG_Load( dirname );
 		if (surface) {
 			imgs.push_back( SDL_CreateTextureFromSurface(renderer, surface) );
@@ -690,8 +708,9 @@ Uint32 load_images( Uint32 interval, void* dirname_v ) {
 			dupeCurrent();
 			h[hi].push_back( std::make_shared<Image>(0, 0, screenW, screenH) );
 			rerender_requested = 1;
-
-			return 1;
+			cmi = 1;
+			
+			strcpy(dirname, "/u/");
 		}
 	}
 
